@@ -25,7 +25,7 @@ import (
 
 // Package type metadata.
 const (
-	Group   = "sample.template.crossplane.io"
+	Group   = "datasource.external.crossplane.io"
 	Version = "v1alpha1"
 )
 
@@ -37,14 +37,14 @@ var (
 	SchemeBuilder = &scheme.Builder{GroupVersion: SchemeGroupVersion}
 )
 
-// MyType type metadata.
+// DataSource type metadata.
 var (
-	MyTypeKind             = reflect.TypeOf(MyType{}).Name()
-	MyTypeGroupKind        = schema.GroupKind{Group: Group, Kind: MyTypeKind}.String()
-	MyTypeKindAPIVersion   = MyTypeKind + "." + SchemeGroupVersion.String()
-	MyTypeGroupVersionKind = SchemeGroupVersion.WithKind(MyTypeKind)
+	DataSourceKind             = reflect.TypeOf(DataSource{}).Name()
+	DataSourceGroupKind        = schema.GroupKind{Group: Group, Kind: DataSourceKind}.String()
+	DataSourceKindAPIVersion   = DataSourceKind + "." + SchemeGroupVersion.String()
+	DataSourceGroupVersionKind = SchemeGroupVersion.WithKind(DataSourceKind)
 )
 
 func init() {
-	SchemeBuilder.Register(&MyType{}, &MyTypeList{})
+	SchemeBuilder.Register(&DataSource{}, &DataSourceList{})
 }
