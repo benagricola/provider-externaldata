@@ -36,12 +36,12 @@ spec:
 apiVersion: datasource.external.crossplane.io/v1alpha1
 kind: DataSource
 metadata:
-  name: uri-example
+  name: url-example
 spec:
   forProvider:
-    type: uri
-    # Retrieve four cheese margherita pizza information from URI.
-    uri: https://raw.githubusercontent.com/elastic/examples/master/Search/recipe_search_java/data/four-cheese-margherita-pizza.json
+    type: url
+    # Retrieve four cheese margherita pizza information from URL.
+    url: https://raw.githubusercontent.com/elastic/examples/master/Search/recipe_search_java/data/four-cheese-margherita-pizza.json
 ```
 
 Output from the above `DataSource` resources:
