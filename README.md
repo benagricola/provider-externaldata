@@ -10,6 +10,8 @@ data from external sources. It currently supports retrieving data from:
   to control where data can be retrieved from.
 - A URI containing JSON, retrieved using `go-resty`. Note: this will be retrieved at least _once_ per reconciliation loop of the resource, and the request must take less than one second.
 
+**WARNING**: This isn't exactly efficient because you need to have a `DataSource` instance inside each XR that requires the data. If your data source is well optimised then this should not be an issue until you have a _LOT_ of XR's, but bear in mind - no caching is done on the part of `provider-externaldata` so your data endpoint will receive 1-2x as many HTTP requests as the number of resources you have, every reconciliation loop (which, if up to date, will be around every 5 minutes).
+
 ## Usage
 
 ```yaml
