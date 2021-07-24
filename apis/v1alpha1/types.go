@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Crossplane Authors.
+Copyright 2021 The Crossplane Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,8 @@ import (
 type ProviderConfigSpec struct {
 	// Namespace configures the namespace that will be used to look for
 	// external data sources that exist on-cluster.
-	Namespace string `json:"namespace"`
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
 }
 
 // A ProviderConfigStatus reflects the observed state of a ProviderConfig.

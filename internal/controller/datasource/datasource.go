@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Crossplane Authors.
+Copyright 2021 The Crossplane Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,11 +18,14 @@ package datasource
 
 import (
 	"context"
-	"fmt"
-
 	"encoding/json"
+	"time"
+
+	"github.com/go-resty/resty/v2"
+	"github.com/google/go-cmp/cmp"
 	"github.com/pkg/errors"
 	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -40,14 +43,17 @@ import (
 )
 
 const (
-	errNotDataSource    = "managed resource is not a DataSource custom resource"
-	errTrackPCUsage = "cannot track ProviderConfig usage"
-	errGetPC        = "cannot get ProviderConfig"
-	errGetCreds     = "cannot get credentials"
+	errNotDataSource = "managed resource is not a DataSource custom resource"
+	errTrackPCUsage  = "cannot track ProviderConfig usage"
+	errGetPC         = "cannot get ProviderConfig"
 
-	errNewClient = "cannot create new Service"
+	errConfigMapName = "configMapName must be specified when type is configmap"
+	errURI           = "uri must be specified when type is uri"
+	errDataLookup    = "cannot retrieve from datasource"
+
+	errFmtUnknownSourceType = "unknown datasource type %s"
+	errFmtRequestFailed     = "request failed: %s"
 )
-
 
 // Setup adds a controller that reconciles DataSource managed resources.
 func Setup(mgr ctrl.Manager, l logging.Logger, rl workqueue.RateLimiter) error {
@@ -60,8 +66,8 @@ func Setup(mgr ctrl.Manager, l logging.Logger, rl workqueue.RateLimiter) error {
 	r := managed.NewReconciler(mgr,
 		resource.ManagedKind(v1alpha1.DataSourceGroupVersionKind),
 		managed.WithExternalConnecter(&connector{
-			kube:         mgr.GetClient(),
-			usage:        resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{}),
+			kube:  mgr.GetClient(),
+			usage: resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{}),
 		}),
 		managed.WithLogger(l.WithValues("controller", name)),
 		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))))
@@ -76,8 +82,8 @@ func Setup(mgr ctrl.Manager, l logging.Logger, rl workqueue.RateLimiter) error {
 // A connector is expected to produce an ExternalClient when its Connect method
 // is called.
 type connector struct {
-	kube         client.Client
-	usage        resource.Tracker
+	kube  client.Client
+	usage resource.Tracker
 }
 
 // Connect typically produces an ExternalClient by:
@@ -96,9 +102,9 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.Wrap(err, errGetPC)
 	}
 
-	return &external{ 
+	return &external{
 		client: c.kube,
-		ns: pc.Spec.Namespace,
+		ns:     pc.Spec.Namespace,
 	}, nil
 }
 
@@ -106,7 +112,68 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 // external resource to ensure it reflects the managed resource's desired state.
 type external struct {
 	client client.Client
-	ns string
+	ns     string
+}
+
+func lookupConfigMap(ctx context.Context, client client.Client, namespace string, name string, re *runtime.RawExtension) error { //nolint:interfacer
+	// Interfacer linting disabled as it tries to suggest json.Unmarshaler
+	cm := &apiv1.ConfigMap{}
+	if err := client.Get(ctx, types.NamespacedName{
+		Name:      name,
+		Namespace: namespace,
+	}, cm); err != nil {
+		return err
+	}
+	mb, err := json.Marshal(cm.Data)
+	if err != nil {
+		return err
+	}
+	return re.UnmarshalJSON(mb)
+}
+
+func lookupURL(ctx context.Context, uri string, re *runtime.RawExtension) error { //nolint:interfacer
+	// Interfacer linting disabled as it tries to suggest json.Unmarshaler
+	c := resty.New()
+	c.SetRetryCount(1)
+	c.SetTimeout(1 * time.Second)
+	c.SetHeader("Accept", "application/json")
+
+	res, err := c.R().
+		SetContext(ctx).
+		Get(uri)
+
+	if err != nil {
+		return err
+	}
+
+	if !res.IsSuccess() {
+		return errors.Errorf(errFmtRequestFailed, res.Status())
+	}
+
+	return re.UnmarshalJSON(res.Body())
+}
+
+func lookupData(ctx context.Context, client client.Client, ext external, sp v1alpha1.DataSourceSpec, re *runtime.RawExtension) error {
+	var err error
+
+	switch sp.ForProvider.SourceType {
+	case v1alpha1.SourceTypeConfigMap:
+
+		if sp.ForProvider.ConfigMapName == nil {
+			return errors.New(errConfigMapName)
+		}
+		err = lookupConfigMap(ctx, client, ext.ns, *sp.ForProvider.ConfigMapName, re)
+
+	case v1alpha1.SourceTypeURL:
+		if sp.ForProvider.URL == nil {
+			return errors.New(errURI)
+		}
+		err = lookupURL(ctx, *sp.ForProvider.URL, re)
+	default:
+		return errors.Errorf(errFmtUnknownSourceType, sp.ForProvider.SourceType)
+	}
+
+	return err
 }
 
 func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
@@ -115,27 +182,31 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		return managed.ExternalObservation{}, errors.New(errNotDataSource)
 	}
 
-	cm := &apiv1.ConfigMap{}
-	if err := c.client.Get(ctx, types.NamespacedName{
-		Name: cr.Spec.ForProvider.ConfigMapRef.Name,
-		Namespace: c.ns,
-	}, cm); err != nil {
-		return managed.ExternalObservation{ ResourceExists: false }, errors.Wrap(err, errGetPC)
+	// If deletion was requested, return that this resource does not exist
+	// or the Kubernetes API object will not be deleted.
+	if cr.DeletionTimestamp != nil {
+		return managed.ExternalObservation{ResourceExists: false}, nil
 	}
 
-	mcm, err := json.Marshal(cm.Data)
+	nd := runtime.RawExtension{}
+
+	err := lookupData(
+		ctx,
+		c.client,
+		*c,
+		cr.Spec,
+		&nd)
 
 	if err != nil {
-		return managed.ExternalObservation{ ResourceExists: false }, errors.Wrap(err, errGetPC)
+		return managed.ExternalObservation{ResourceExists: false}, errors.Wrap(err, errDataLookup)
 	}
 
-	err = cr.Status.AtProvider.UnmarshalJSON(mcm)
+	upToDate := cmp.Equal(cr.Status.AtProvider, &nd)
 
-	if err != nil {
-		return managed.ExternalObservation{ ResourceExists: false }, errors.Wrap(err, errGetPC)
-	}
-
-	return managed.ExternalObservation{ ResourceExists: true, ResourceUpToDate: true }, nil
+	return managed.ExternalObservation{
+		ResourceExists:   cr.Status.AtProvider != nil,
+		ResourceUpToDate: upToDate,
+	}, nil
 }
 
 func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
@@ -144,13 +215,22 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalCreation{}, errors.New(errNotDataSource)
 	}
 
-	fmt.Printf("Creating: %+v", cr)
+	nd := runtime.RawExtension{}
 
-	return managed.ExternalCreation{
-		// Optionally return any details that may be required to connect to the
-		// external resource. These will be stored as the connection secret.
-		ConnectionDetails: managed.ConnectionDetails{},
-	}, nil
+	err := lookupData(
+		ctx,
+		c.client,
+		*c,
+		cr.Spec,
+		&nd)
+
+	if err != nil {
+		return managed.ExternalCreation{}, errors.Wrap(err, errDataLookup)
+	}
+
+	cr.Status.AtProvider = &nd
+
+	return managed.ExternalCreation{}, nil
 }
 
 func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.ExternalUpdate, error) {
@@ -159,13 +239,14 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalUpdate{}, errors.New(errNotDataSource)
 	}
 
-	fmt.Printf("Updating: %+v", cr)
+	err := lookupData(
+		ctx,
+		c.client,
+		*c,
+		cr.Spec,
+		cr.Status.AtProvider)
 
-	return managed.ExternalUpdate{
-		// Optionally return any details that may be required to connect to the
-		// external resource. These will be stored as the connection secret.
-		ConnectionDetails: managed.ConnectionDetails{},
-	}, nil
+	return managed.ExternalUpdate{}, errors.Wrap(err, errDataLookup)
 }
 
 func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
@@ -173,8 +254,7 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 	if !ok {
 		return errors.New(errNotDataSource)
 	}
-
-	fmt.Printf("Deleting: %+v", cr)
+	cr.Status.AtProvider = nil
 
 	return nil
 }

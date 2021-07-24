@@ -18,10 +18,14 @@ spec:
     singular: datasource
   scope: Cluster
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.forProvider.type
+      name: TYPE
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: A DataSource is an example API type.
+        description: A DataSource retrieves data from an external source such as a Kubernetes ConfigMap or HTTP endpoint that returns JSON.
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
@@ -43,30 +47,17 @@ spec:
               forProvider:
                 description: DataSourceParameters are the configurable fields of a DataSource.
                 properties:
-                  configMapRef:
-                    description: A Reference to a named object.
-                    properties:
-                      name:
-                        description: Name of the referenced object.
-                        type: string
-                    required:
-                    - name
-                    type: object
-                  configMapSelector:
-                    description: A Selector selects an object.
-                    properties:
-                      matchControllerRef:
-                        description: MatchControllerRef ensures an object with the same controller reference as the selecting object is selected.
-                        type: boolean
-                      matchLabels:
-                        additionalProperties:
-                          type: string
-                        description: MatchLabels ensures an object with matching labels is selected.
-                        type: object
-                    type: object
+                  configMapName:
+                    description: ConfigMapName is the name of a Kubernetes ConfigMap to look up in the Namespace configured on the current ProviderConfig, when type is 'configmap'
+                    type: string
                   type:
+                    description: SourceType is the type of external data source to retrieve values from.
                     enum:
                     - configmap
+                    - url
+                    type: string
+                  url:
+                    description: URL is the URL of a JSON endpint to retrieve data from, when type is 'url'
                     type: string
                 required:
                 - type
@@ -109,6 +100,7 @@ spec:
             description: A DataSourceStatus represents the observed state of a DataSource.
             properties:
               atProvider:
+                description: AtProvider contains the results of our external data lookup.
                 type: object
                 x-kubernetes-preserve-unknown-fields: true
               conditions:

@@ -2,7 +2,7 @@
 apiVersion: external.crossplane.io/v1alpha1
 kind: ProviderConfig
 metadata:
-  name: example
+  name: default
 spec:
   namespace: test
 

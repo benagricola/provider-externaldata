@@ -41,8 +41,6 @@ spec:
               namespace:
                 description: Namespace configures the namespace that will be used to look for external data sources that exist on-cluster.
                 type: string
-            required:
-            - namespace
             type: object
           status:
             description: A ProviderConfigStatus reflects the observed state of a ProviderConfig.

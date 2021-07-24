@@ -1,11 +1,9 @@
 apiVersion: datasource.external.crossplane.io/v1alpha1
 kind: DataSource
 metadata:
-  name: example
+  name: cm-example
 spec:
   forProvider:
     type: configmap
-    configMapRef:
+    configMapName:
       name: my-values
-  providerConfigRef:
-    name: example

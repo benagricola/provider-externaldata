@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Crossplane Authors.
+Copyright 2021 The Crossplane Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,20 +24,31 @@ import (
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 )
 
+// SourceType is the type of external data source to retrieve
+// values from.
+// +kubebuilder:validation:Enum=configmap;url
 type SourceType string
 
+// SourceTypeConfigMap is a Config Map Source
 const SourceTypeConfigMap SourceType = "configmap"
+
+// SourceTypeURL is a URL
+const SourceTypeURL SourceType = "url"
 
 // DataSourceParameters are the configurable fields of a DataSource.
 type DataSourceParameters struct {
-	// +kubebuilder:validation:Enum=configmap
 	SourceType SourceType `json:"type"`
 
+	// ConfigMapName is the name of a Kubernetes ConfigMap to look up
+	// in the Namespace configured on the current ProviderConfig, when
+	// type is 'configmap'
 	// +optional
-	ConfigMapRef xpv1.Reference `json:"configMapRef,omitempty"`
+	ConfigMapName *string `json:"configMapName,omitempty"`
 
+	// URL is the URL of a JSON endpint to retrieve data from, when type
+	// is 'url'
 	// +optional
-	ConfigMapSelector xpv1.Selector `json:"configMapSelector,omitempty"`
+	URL *string `json:"url,omitempty"`
 }
 
 // A DataSourceSpec defines the desired state of a DataSource.
@@ -50,15 +61,18 @@ type DataSourceSpec struct {
 type DataSourceStatus struct {
 	xpv1.ResourceStatus `json:",inline"`
 
+	// AtProvider contains the results of our external data lookup.
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +optional
-	AtProvider          runtime.RawExtension `json:"atProvider,omitempty"`
+	AtProvider *runtime.RawExtension `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// A DataSource is an example API type.
+// A DataSource retrieves data from an external source such as a
+// Kubernetes ConfigMap or HTTP endpoint that returns JSON.
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="TYPE",type="string",JSONPath=".spec.forProvider.type"
 // +kubebuilder:resource:scope=Cluster,categories={crossplane,managed,externaldata}
 type DataSource struct {
 	metav1.TypeMeta   `json:",inline"`

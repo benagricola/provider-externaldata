@@ -1,0 +1,8 @@
+apiVersion: datasource.external.crossplane.io/v1alpha1
+kind: DataSource
+metadata:
+  name: url-example
+spec:
+  forProvider:
+    type: url
+    url: https://raw.githubusercontent.com/elastic/examples/master/Search/recipe_search_java/data/four-cheese-margherita-pizza.json
