@@ -14,6 +14,9 @@ data from external sources. It currently supports retrieving data from:
 
 ## Usage
 
+**STATUS**: Alpha. Tested locally using `kind` but not used in anger outside of the examples. Feel free to give it a shot if you have a use-case for it but this code is provided as-is, without warranty or liability. If you find something broken then feel free to submit an issue or a PR to fix it.
+
+
 ```yaml
 # Create ConfigMap to be looked up; From Kubernetes docs.
 apiVersion: v1
