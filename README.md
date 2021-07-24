@@ -13,7 +13,17 @@ data from external sources. It currently supports retrieving data from:
 ## Usage
 
 ```yaml
-
+# Create ConfigMap to be looked up; From Kubernetes docs.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-values
+  namespace: test
+data:
+  player_initial_lives: "3"
+  ui_properties_file_name: "user-interface.properties"
+  weeWooTest: "NINE"
+---
 apiVersion: external.crossplane.io/v1alpha1
 kind: ProviderConfig
 metadata:
