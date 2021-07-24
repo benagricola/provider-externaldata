@@ -5,5 +5,4 @@ metadata:
 spec:
   forProvider:
     type: configmap
-    configMapName:
-      name: my-values
+    configMapName: my-values
