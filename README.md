@@ -45,8 +45,7 @@ spec:
   forProvider:
     type: configmap
     # Retrieve all values from 'Data' section of the 'my-values' ConfigMap.
-    configMapName:
-      name: my-values
+    configMapName: my-values
 ---
 apiVersion: datasource.external.crossplane.io/v1alpha1
 kind: DataSource
